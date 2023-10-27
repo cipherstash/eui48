@@ -17,12 +17,6 @@
 )]
 
 extern crate regex;
-#[cfg(feature = "rustc-serialize")]
-extern crate rustc_serialize;
-#[cfg(feature = "serde")]
-extern crate serde;
-#[cfg(feature = "serde_json")]
-extern crate serde_json;
 
 use std::default::Default;
 use std::error::Error;
@@ -30,9 +24,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use regex::Regex;
-#[cfg(feature = "rustc-serialize")]
-use rustc_serialize::{Decodable, Decoder, Encodable, Encoder};
-#[cfg(feature = "serde")]
+
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 /// A 48-bit (6 byte) buffer containing the EUI address
@@ -310,25 +302,7 @@ impl Error for ParseError {
     }
 }
 
-#[cfg(feature = "rustc-serialize")]
-impl Encodable for MacAddress {
-    /// Encode a MacAddress using the default format
-    fn encode<E: Encoder>(&self, e: &mut E) -> Result<(), E::Error> {
-        let disp_fmt = MacAddress::get_display_format();
-        e.emit_str(&self.to_string(disp_fmt))
-    }
-}
-
-#[cfg(feature = "rustc-serialize")]
-impl Decodable for MacAddress {
-    /// Decode a MacAddress from a string in canonical form
-    fn decode<D: Decoder>(d: &mut D) -> Result<MacAddress, D::Error> {
-        let string = d.read_str()?;
-        string.parse().map_err(|err| d.error(&format!("{}", err)))
-    }
-}
-
-#[cfg(all(feature = "serde", not(feature = "serde_bytes")))]
+#[cfg(all(not(feature = "serde_bytes")))]
 impl Serialize for MacAddress {
     /// Serialize a MacAddress in the default format using the serde crate
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -345,7 +319,7 @@ impl Serialize for MacAddress {
     }
 }
 
-#[cfg(all(feature = "serde", not(feature = "serde_bytes")))]
+#[cfg(all(not(feature = "serde_bytes")))]
 impl<'de> Deserialize<'de> for MacAddress {
     /// Deserialize a MacAddress from canonical form using the serde crate
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -683,39 +657,44 @@ mod tests {
 
     #[test]
     fn test_serialize() {
-        use rustc_serialize::json;
-
+        use serde_json;
         let mac = MacAddress::parse_str("12:34:56:AB:CD:EF").unwrap();
         // Format returned is base on compile time of feature(disp_hexstring)
         if cfg!(feature = "disp_hexstring") {
-            assert_eq!("\"12:34:56:ab:cd:ef\"", json::encode(&mac).unwrap());
+            let s = serde_json::to_string(&mac).unwrap();
+            assert_eq!("\"12:34:56:ab:cd:ef\"", &s);
         } else {
-            assert_eq!("\"12-34-56-ab-cd-ef\"", json::encode(&mac).unwrap());
+            let s = serde_json::to_string(&mac).unwrap();
+            assert_eq!("\"12-34-56-ab-cd-ef\"", &s);
         }
     }
 
     #[test]
     fn test_deserialize() {
-        use rustc_serialize::json;
+        use serde_json;
 
         let mac = MacAddress::parse_str("12:34:56:AB:CD:EF").unwrap();
 
         if cfg!(feature = "disp_hexstring") {
             let d = "\"12:34:56:AB:CD:EF\"";
-            assert_eq!(mac, json::decode(&d).unwrap());
+            let j: MacAddress = serde_json::from_str(&d).unwrap();
+            assert_eq!(mac, j);
         } else {
             let d = "\"12-34-56-AB-CD-EF\"";
-            assert_eq!(mac, json::decode(&d).unwrap());
+            let j: MacAddress = serde_json::from_str(&d).unwrap();
+            assert_eq!(mac, j);
         }
     }
 
     #[test]
     fn test_serialize_roundtrip() {
-        use rustc_serialize::json;
+        use serde_json;
 
         let m1 = MacAddress::parse_str("12:34:56:AB:CD:EF").unwrap();
-        let s = json::encode(&m1).unwrap();
-        let m2 = json::decode(&s).unwrap();
+        let s = serde_json::to_string(&m1).unwrap();
+
+        let m2: MacAddress = serde_json::from_str(&s).unwrap();
+
         assert_eq!(m1, m2);
     }
 
@@ -752,7 +731,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "serde_json")]
     fn test_serde_json_serialize() {
         use serde_json;
         let serialized =
@@ -765,7 +743,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "serde_json")]
     fn test_serde_json_deserialize() {
         use serde_json;
         let mac = MacAddress::parse_str("12:34:56:AB:CD:EF").unwrap();
@@ -775,7 +752,6 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Invalid length; expecting 11 to 17 chars, found 2")]
-    #[cfg(feature = "serde_json")]
     fn test_serde_json_deserialize_panic() {
         let _should_panic: MacAddress = serde_json::from_str("\"12\"").unwrap();
     }
